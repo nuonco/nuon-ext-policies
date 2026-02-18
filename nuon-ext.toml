@@ -1,0 +1,7 @@
+[extension]
+name = "policies"
+description = "Validate and analyze Nuon permission policies and boundaries"
+
+[extension.auth]
+requires_token = false
+requires_org = false
