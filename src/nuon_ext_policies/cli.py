@@ -2,7 +2,6 @@ import click
 
 from nuon_ext_policies.boundaries import check_boundaries
 from nuon_ext_policies.overlap import check_overlap
-from nuon_ext_policies.diagram import generate_diagram
 
 
 @click.group()
@@ -14,4 +13,3 @@ def main():
 
 main.add_command(check_boundaries)
 main.add_command(check_overlap)
-main.add_command(generate_diagram)
