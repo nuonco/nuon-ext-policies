@@ -65,22 +65,28 @@ def find_overlaps(
 
 
 @click.command("check-overlap")
-@click.argument("permission_toml", type=click.Path(exists=True, dir_okay=False))
-@click.option("--json-output", is_flag=True, help="Output results as JSON")
-def check_overlap(permission_toml: str, json_output: bool):
+@click.argument("permission_toml")
+@click.option("--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.pass_context
+def check_overlap(ctx, permission_toml: str, output: str):
     """Check for overlapping IAM actions across policy documents.
 
-    PERMISSION_TOML is the path to a permission TOML file
-    (e.g. permissions/maintenance.toml)
+    PERMISSION_TOML is the name of a permission TOML file
+    (e.g. maintenance.toml), resolved under permissions/ in the app directory.
     """
     console = Console()
-    toml_path = Path(permission_toml)
+    root = Path(ctx.obj["app_dir"])
+    toml_path = root / "permissions" / permission_toml
+
+    if not toml_path.exists():
+        Console(stderr=True).print(f"[red]Permission file not found: {toml_path}[/red]")
+        sys.exit(1)
 
     config = load_toml(toml_path)
     policies_config = config.get("policies", [])
 
     if not policies_config:
-        if json_output:
+        if output == "json":
             click.echo("[]")
         else:
             console.print(
@@ -88,7 +94,7 @@ def check_overlap(permission_toml: str, json_output: bool):
             )
         return
 
-    if not json_output:
+    if output != "json":
         console.print(
             Panel(f"Analyzing [bold]{toml_path}[/bold]", title="Policy Overlap Checker")
         )
@@ -96,7 +102,7 @@ def check_overlap(permission_toml: str, json_output: bool):
     base_dir = toml_path.parent
     policies: dict[str, dict[str, set[str]]] = {}
 
-    if not json_output:
+    if output != "json":
         table = Table(title="Policy Documents")
         table.add_column("Policy Name", style="cyan")
         table.add_column("File", style="green")
@@ -109,7 +115,7 @@ def check_overlap(permission_toml: str, json_output: bool):
         json_path = base_dir / contents_path
 
         if not json_path.exists():
-            if not json_output:
+            if output != "json":
                 console.print(
                     f"[yellow]Warning: Policy file not found: {json_path}[/yellow]"
                 )
@@ -120,7 +126,7 @@ def check_overlap(permission_toml: str, json_output: bool):
             actions_by_sid = extract_actions(policy_doc)
             policies[json_path.name] = actions_by_sid
 
-            if not json_output:
+            if output != "json":
                 total_actions = sum(len(a) for a in actions_by_sid.values())
                 table.add_row(
                     name.replace("{{.nuon.install.id}}", "<install>"),
@@ -129,16 +135,16 @@ def check_overlap(permission_toml: str, json_output: bool):
                     str(total_actions),
                 )
         except json.JSONDecodeError as e:
-            if not json_output:
+            if output != "json":
                 console.print(f"[red]Error parsing {json_path}: {e}[/red]")
 
-    if not json_output:
+    if output != "json":
         console.print(table)
         console.print()
 
     overlaps = find_overlaps(policies)
 
-    if json_output:
+    if output == "json":
         result = {
             action: [
                 {"policy1": p1, "sid1": s1, "policy2": p2, "sid2": s2}

@@ -125,16 +125,20 @@ def print_findings_table(console: Console, severity: str, items: list[dict]):
 
 
 @click.command("check-boundaries")
-@click.argument("permissions_dir", type=click.Path(exists=True, file_okay=False))
-@click.option("--json-output", is_flag=True, help="Output results as JSON")
-def check_boundaries(permissions_dir: str, json_output: bool):
+@click.option("--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.pass_context
+def check_boundaries(ctx, output: str):
     """Compare permission boundaries for discrepancies.
 
-    PERMISSIONS_DIR is the directory containing the boundary JSON files
-    (provision_boundary.json, deprovision_boundary.json, etc.)
+    Searches for a permissions/ directory in the app config directory.
     """
     console = Console()
-    permissions_path = Path(permissions_dir)
+    root = Path(ctx.obj["app_dir"])
+    permissions_path = root / "permissions"
+
+    if not permissions_path.is_dir():
+        Console(stderr=True).print("[red]No permissions/ directory found.[/red]")
+        sys.exit(1)
 
     boundary_files = {
         "provision": permissions_path / "provision_boundary.json",
@@ -143,7 +147,7 @@ def check_boundaries(permissions_dir: str, json_output: bool):
         "breakglass": permissions_path / "breakglass_boundary.json",
     }
 
-    if not json_output:
+    if output != "json":
         console.print(
             Panel("Loading Permission Boundaries", title="Boundary Checker")
         )
@@ -152,22 +156,22 @@ def check_boundaries(permissions_dir: str, json_output: bool):
     for name, path in boundary_files.items():
         if path.exists():
             boundaries[name] = load_boundary(path)
-            if not json_output:
+            if output != "json":
                 console.print(
                     f"  [green]✓[/green] Loaded [cyan]{name}[/cyan]: {path.name}"
                 )
         else:
-            if not json_output:
+            if output != "json":
                 console.print(
                     f"  [red]✗[/red] Missing [cyan]{name}[/cyan]: {path}"
                 )
 
-    if not json_output:
+    if output != "json":
         console.print()
 
     findings = compare_boundaries(boundaries)
 
-    if json_output:
+    if output == "json":
         import json as json_mod
 
         click.echo(json_mod.dumps(findings, indent=2))
