@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import click
 
 from nuon_ext_policies.boundaries import check_boundaries
@@ -16,7 +18,7 @@ from nuon_ext_policies.overlap import check_overlap
 def main(ctx, app_dir):
     """Validate and analyze Nuon permission policies and boundaries."""
     ctx.ensure_object(dict)
-    ctx.obj["app_dir"] = app_dir
+    ctx.obj["app_dir"] = str(Path.cwd() / app_dir)
 
 
 main.add_command(check_boundaries)
