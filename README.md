@@ -10,7 +10,7 @@ nuon ext install nuonco/nuon-ext-policies
 
 ## Usage
 
-Run commands from your Nuon app directory, or pass `--app-dir` to point at one:
+Run commands from your Nuon app directory. If `--app-dir` is omitted, it implicitly uses the current working directory:
 
 ```bash
 nuon policies --app-dir /path/to/app <command>
