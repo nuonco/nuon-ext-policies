@@ -9,6 +9,28 @@ from nuon_ext_policies.cli import main
 
 
 class CheckOverlapTests(unittest.TestCase):
+    def test_empty_policy_config_returns_an_object(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app_dir = Path(directory)
+            permissions_dir = app_dir / "permissions"
+            permissions_dir.mkdir()
+            (permissions_dir / "maintenance.toml").write_text("")
+
+            result = CliRunner().invoke(
+                main,
+                [
+                    "--app-dir",
+                    str(app_dir),
+                    "check-overlap",
+                    "maintenance.toml",
+                    "--output",
+                    "json",
+                ],
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(json.loads(result.output), {})
+
     def test_includes_referenced_named_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             app_dir = Path(directory)
@@ -31,11 +53,7 @@ contents = "./inline.json"
             )
             (permissions_dir / "inline.json").write_text(
                 json.dumps(
-                    {
-                        "Statement": [
-                            {"Sid": "Inline", "Action": ["s3:GetObject"]}
-                        ]
-                    }
+                    {"Statement": [{"Sid": "Inline", "Action": ["s3:GetObject"]}]}
                 )
             )
             (policies_dir / "shared.json").write_text(
