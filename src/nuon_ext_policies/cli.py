@@ -2,8 +2,9 @@ from pathlib import Path
 
 import click
 
-from nuon_ext_policies.boundaries import check_boundaries
+from nuon_ext_policies.boundaries import check_boundaries, check_policy_boundary
 from nuon_ext_policies.overlap import check_overlap
+from nuon_ext_policies.policy_count import check_policy_count
 
 
 @click.group()
@@ -24,3 +25,5 @@ def main(ctx, app_dir):
 
 main.add_command(check_boundaries)
 main.add_command(check_overlap)
+main.add_command(check_policy_boundary)
+main.add_command(check_policy_count)
