@@ -18,8 +18,7 @@ def count_managed_policies(config: dict) -> dict[str, int]:
     """Count customer- and AWS-managed policies attached by a role config."""
     named = len(config.get("named_policies", []))
     aws_managed = sum(
-        bool(policy.get("managed_policy_name"))
-        for policy in config.get("policies", [])
+        bool(policy.get("managed_policy_name")) for policy in config.get("policies", [])
     )
     return {
         "named_policies": named,
@@ -30,16 +29,32 @@ def count_managed_policies(config: dict) -> dict[str, int]:
 
 
 @click.command("check-policy-count")
-@click.argument("permission_toml")
+@click.argument("permission_toml", metavar="PERMISSION_FILE")
 @click.option(
     "--output",
     type=click.Choice(["text", "json"]),
     default="text",
-    help="Output format",
+    show_default=True,
+    help="Output human-readable text or a JSON count and category breakdown.",
 )
 @click.pass_context
 def check_policy_count(ctx, permission_toml: str, output: str):
-    """Check managed-policy attachments against AWS's default role quota."""
+    """Check managed-policy attachments against AWS's 20-policy role quota.
+
+    PERMISSION_FILE is a filename such as maintenance.toml. It is resolved as
+    APP_DIR/permissions/PERMISSION_FILE.
+
+    The total includes every [[named_policies]] reference and every
+    [[policies]] entry with managed_policy_name. Inline policies with contents
+    do not count toward this quota.
+
+    JSON output contains named_policies, aws_managed_policies, total, and max.
+    Exit status is 1 only when total is greater than 20; 20/20 passes.
+
+    \b
+    Example:
+      nuon policies --app-dir ./my-app check-policy-count maintenance.toml --output json
+    """
     root = Path(ctx.obj["app_dir"])
     toml_path = root / "permissions" / permission_toml
 

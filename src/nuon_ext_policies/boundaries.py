@@ -85,7 +85,9 @@ def find_boundary_violations(
             if statement.get("Effect", "Allow").lower() == "allow"
             else denied_actions
         )
-        destination.extend((action, statement.get("Sid", "unnamed")) for action in actions)
+        destination.extend(
+            (action, statement.get("Sid", "unnamed")) for action in actions
+        )
 
     violations = []
     for policy_name, sids in policies.items():
@@ -187,11 +189,35 @@ def compare_boundaries(boundaries: dict[str, dict]) -> list[dict]:
 
 
 @click.command("check-policy-boundary")
-@click.argument("permission_toml")
-@click.option("--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.argument("permission_toml", metavar="PERMISSION_FILE")
+@click.option(
+    "--output",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output human-readable text or a JSON array of blocked actions.",
+)
 @click.pass_context
 def check_policy_boundary(ctx, permission_toml: str, output: str):
-    """Check that a role boundary permits every inline and named policy action."""
+    """Check that a role boundary permits every identity-policy action.
+
+    PERMISSION_FILE is a filename such as maintenance.toml. It is resolved as
+    APP_DIR/permissions/PERMISSION_FILE. The permissions_boundary path inside
+    that file is resolved relative to permissions/.
+
+    The check reads Allow actions from both inline and named policy documents,
+    then tests them against boundary Allow and Deny actions. Matching is
+    case-insensitive and supports IAM-style * and ? wildcards. This compares
+    Action only; AWS still evaluates Resource and Condition at runtime.
+
+    JSON output is an array of blocked actions with reason not_allowed or
+    explicit_deny. An absent permissions_boundary passes and returns []. Exit
+    status is 1 when any action is blocked, otherwise 0.
+
+    \b
+    Example:
+      nuon policies --app-dir ./my-app check-policy-boundary maintenance.toml --output json
+    """
     console = Console()
     root = Path(ctx.obj["app_dir"])
     toml_path = root / "permissions" / permission_toml
@@ -290,12 +316,40 @@ def print_findings_table(console: Console, severity: str, items: list[dict]):
 
 
 @click.command("check-boundaries")
-@click.option("--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.option(
+    "--output",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output human-readable text or a JSON array of discrepancies.",
+)
 @click.pass_context
 def check_boundaries(ctx, output: str):
-    """Compare permission boundaries for discrepancies.
+    """Compare lifecycle permission-boundary action lists.
 
-    Searches for a permissions/ directory in the app config directory.
+    Reads these files when present under APP_DIR/permissions/:
+
+    \b
+      provision_boundary.json
+      deprovision_boundary.json
+      maintenance_boundary.json
+      breakglass_boundary.json
+
+    The permissions/ directory is required; individual boundary files that are
+    absent are skipped.
+
+    Reports Allow and Deny actions that do not occur in every loaded boundary.
+    Action comparison is case-insensitive but does not expand wildcards.
+    Maintenance-only actions are high severity; breakglass-only actions are
+    low severity; other differences are medium severity.
+
+    JSON output is an array with action, effect, present_in, missing_from,
+    severity, and note. Exit status is 1 when any high-severity discrepancy is
+    found; medium- and low-severity findings alone return 0.
+
+    \b
+    Example:
+      nuon policies --app-dir ./my-app check-boundaries --output json
     """
     console = Console()
     root = Path(ctx.obj["app_dir"])
@@ -313,9 +367,7 @@ def check_boundaries(ctx, output: str):
     }
 
     if output != "json":
-        console.print(
-            Panel("Loading Permission Boundaries", title="Boundary Checker")
-        )
+        console.print(Panel("Loading Permission Boundaries", title="Boundary Checker"))
 
     boundaries = {}
     for name, path in boundary_files.items():
@@ -327,9 +379,7 @@ def check_boundaries(ctx, output: str):
                 )
         else:
             if output != "json":
-                console.print(
-                    f"  [red]✗[/red] Missing [cyan]{name}[/cyan]: {path}"
-                )
+                console.print(f"  [red]✗[/red] Missing [cyan]{name}[/cyan]: {path}")
 
     if output != "json":
         console.print()

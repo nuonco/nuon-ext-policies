@@ -93,14 +93,33 @@ def find_overlaps(
 
 
 @click.command("check-overlap")
-@click.argument("permission_toml")
-@click.option("--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.argument("permission_toml", metavar="PERMISSION_FILE")
+@click.option(
+    "--output",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output human-readable text or a JSON object keyed by overlapping action.",
+)
 @click.pass_context
 def check_overlap(ctx, permission_toml: str, output: str):
-    """Check for overlapping IAM actions across inline and named policies.
+    """Find exact IAM actions declared by more than one policy document.
 
-    PERMISSION_TOML is the name of a permission TOML file
-    (e.g. maintenance.toml), resolved under permissions/ in the app directory.
+    PERMISSION_FILE is a filename such as maintenance.toml. It is resolved as
+    APP_DIR/permissions/PERMISSION_FILE.
+
+    The check reads both [[policies]] and [[named_policies]]. Named references
+    are matched by name against permissions/policies/*.toml. It reports an
+    action only when the same action string occurs in different policy JSON
+    files; it does not expand IAM wildcards.
+
+    JSON output is an object whose keys are overlapping actions and whose
+    values identify each policy/Sid pair. An empty object means no overlaps.
+    Exit status is 1 when overlaps are found, otherwise 0.
+
+    \b
+    Example:
+      nuon policies --app-dir ./my-app check-overlap maintenance.toml --output json
     """
     console = Console()
     root = Path(ctx.obj["app_dir"])
@@ -115,7 +134,7 @@ def check_overlap(ctx, permission_toml: str, output: str):
 
     if not policies_config:
         if output == "json":
-            click.echo("[]")
+            click.echo("{}")
         else:
             console.print(
                 "[yellow]No inline or named policies found in the TOML file.[/yellow]"
