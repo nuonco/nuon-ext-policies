@@ -23,6 +23,34 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def resolve_policy_configs(
+    config: dict, toml_path: Path
+) -> tuple[list[tuple[dict, Path]], list[str]]:
+    """Resolve inline policies and referenced named policy definitions."""
+    policies = [(policy, toml_path.parent) for policy in config.get("policies", [])]
+    references = config.get("named_policies", [])
+    if not references:
+        return policies, []
+
+    definitions = {}
+    policies_dir = toml_path.parent / "policies"
+    for definition_path in sorted(policies_dir.glob("*.toml")):
+        definition = load_toml(definition_path)
+        name = definition.get("name")
+        if name:
+            definitions[name] = (definition, definition_path.parent)
+
+    missing = []
+    for reference in references:
+        name = reference.get("name")
+        if name in definitions:
+            policies.append(definitions[name])
+        else:
+            missing.append(name or "unnamed")
+
+    return policies, missing
+
+
 def extract_actions(policy: dict) -> dict[str, set[str]]:
     """Extract actions from a policy document, grouped by Sid."""
     actions_by_sid: dict[str, set[str]] = {}
@@ -65,14 +93,33 @@ def find_overlaps(
 
 
 @click.command("check-overlap")
-@click.argument("permission_toml")
-@click.option("--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.argument("permission_toml", metavar="PERMISSION_FILE")
+@click.option(
+    "--output",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    show_default=True,
+    help="Output human-readable text or a JSON object keyed by overlapping action.",
+)
 @click.pass_context
 def check_overlap(ctx, permission_toml: str, output: str):
-    """Check for overlapping IAM actions across policy documents.
+    """Find exact IAM actions declared by more than one policy document.
 
-    PERMISSION_TOML is the name of a permission TOML file
-    (e.g. maintenance.toml), resolved under permissions/ in the app directory.
+    PERMISSION_FILE is a filename such as maintenance.toml. It is resolved as
+    APP_DIR/permissions/PERMISSION_FILE.
+
+    The check reads both [[policies]] and [[named_policies]]. Named references
+    are matched by name against permissions/policies/*.toml. It reports an
+    action only when the same action string occurs in different policy JSON
+    files; it does not expand IAM wildcards.
+
+    JSON output is an object whose keys are overlapping actions and whose
+    values identify each policy/Sid pair. An empty object means no overlaps.
+    Exit status is 1 when overlaps are found, otherwise 0.
+
+    \b
+    Example:
+      nuon policies --app-dir ./my-app check-overlap maintenance.toml --output json
     """
     console = Console()
     root = Path(ctx.obj["app_dir"])
@@ -83,14 +130,14 @@ def check_overlap(ctx, permission_toml: str, output: str):
         sys.exit(1)
 
     config = load_toml(toml_path)
-    policies_config = config.get("policies", [])
+    policies_config, missing_named_policies = resolve_policy_configs(config, toml_path)
 
     if not policies_config:
         if output == "json":
-            click.echo("[]")
+            click.echo("{}")
         else:
             console.print(
-                "[yellow]No [[policies]] blocks found in the TOML file.[/yellow]"
+                "[yellow]No inline or named policies found in the TOML file.[/yellow]"
             )
         return
 
@@ -99,8 +146,12 @@ def check_overlap(ctx, permission_toml: str, output: str):
             Panel(f"Analyzing [bold]{toml_path}[/bold]", title="Policy Overlap Checker")
         )
 
-    base_dir = toml_path.parent
     policies: dict[str, dict[str, set[str]]] = {}
+
+    for name in missing_named_policies:
+        Console(stderr=True).print(
+            f"[yellow]Warning: Named policy definition not found: {name}[/yellow]"
+        )
 
     if output != "json":
         table = Table(title="Policy Documents")
@@ -109,10 +160,12 @@ def check_overlap(ctx, permission_toml: str, output: str):
         table.add_column("Statements", justify="right")
         table.add_column("Actions", justify="right")
 
-    for policy in policies_config:
+    for policy, policy_base_dir in policies_config:
         name = policy.get("name", "unnamed")
         contents_path = policy.get("contents", "")
-        json_path = base_dir / contents_path
+        if not contents_path:
+            continue
+        json_path = policy_base_dir / contents_path
 
         if not json_path.exists():
             if output != "json":
